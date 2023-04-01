@@ -2,10 +2,14 @@ mod events;
 mod rendering;
 mod utils;
 
+pub mod parser;
+
 use events::{Rendering, RenderingUserEvent};
 use three_d::{Window, WindowError, WindowSettings};
 use wasm_bindgen::prelude::*;
 use winit::event_loop::{EventLoopProxy, EventLoopWindowTarget};
+
+use parser::part::test;
 
 use crate::rendering::render_instanced_cubes;
 
@@ -72,6 +76,11 @@ impl CustomEventLoopProxy {
         self.0
             .send_event(RenderingUserEvent::InternalUpdateProps(value))
             .unwrap_or_else(|_| panic!("Something went horribly wrong!"));
+    }
+
+    #[wasm_bindgen]
+    pub fn parse_part(&self, id: String) {
+        test(&id);
     }
 }
 
