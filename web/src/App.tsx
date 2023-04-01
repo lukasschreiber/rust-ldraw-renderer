@@ -22,7 +22,7 @@ function App() {
 
   return (
     <div className="App">
-      <button onClick={() => { rendering.parse_part("3001") }}>Parse</button>
+      <button onClick={async () => { await rendering.parse_part("3001") }}>Parse</button>
       <canvas id="canvas1" style={{ display: "block", width: "100%", height: "50%" }}></canvas>
       <input type="range" min="0" max="255" className="slider" id="red" value={red} onChange={e => redChanged(parseInt(e.target.value))} />
     </div>

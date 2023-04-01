@@ -3,26 +3,36 @@ import dotenv from 'dotenv';
 import { getBundleFor, getPrebuildBundleFor } from './bundler';
 import JSZip from "jszip";
 import fs from "fs";
+import cors from "cors";
 
 dotenv.config();
-
-const app: Express = express();
-const port = process.env.PORT;
 
 if (!fs.existsSync(process.env.ZIP_DIR ?? "./zip")) {
     fs.mkdirSync(process.env.ZIP_DIR ?? "./zip");
 }
 
+const app: Express = express();
+const port = process.env.PORT;
+
+app.use(cors())
+
+app.get('/', (req: Request, res: Response) => {
+    res.send("test")
+})
+
 app.get('/bundle/:id', async (req: Request, res: Response) => {
     const zipName = `${req.params.id}.zip`;
     const entryFileName = `${req.params.id}.dat`;
 
+    const zipHeaders = {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': 'inline',
+        // 'Content-disposition': `attachment; filename=${zipName}`
+    }
+
     const prebuildBundle = getPrebuildBundleFor(req.params.id);
     if (prebuildBundle !== null) {
-        res.writeHead(200, {
-            'Content-Type': 'application/zip',
-            'Content-disposition': `attachment; filename=${zipName}`
-        });
+        res.writeHead(200, zipHeaders);
 
         return prebuildBundle.pipe(res);
     }
@@ -33,10 +43,7 @@ app.get('/bundle/:id', async (req: Request, res: Response) => {
         const zip = new JSZip();
         bundle.forEach(file => zip.file(file.name, file.data));
 
-        res.writeHead(200, {
-            'Content-Type': 'application/zip',
-            'Content-disposition': `attachment; filename=${zipName}`
-        });
+        res.writeHead(200, zipHeaders);
 
         // if storage space is a concern comment this out and all bundles are calculated on the fly
         zip.generateNodeStream({ streamFiles: true })

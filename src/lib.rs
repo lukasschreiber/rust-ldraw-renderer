@@ -79,8 +79,8 @@ impl CustomEventLoopProxy {
     }
 
     #[wasm_bindgen]
-    pub fn parse_part(&self, id: String) {
-        test(&id);
+    pub async fn parse_part(&self, id: String) {
+        test(&id).await;
     }
 }
 
