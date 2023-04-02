@@ -9,7 +9,7 @@ use three_d::{Window, WindowError, WindowSettings};
 use wasm_bindgen::prelude::*;
 use winit::event_loop::{EventLoopProxy, EventLoopWindowTarget};
 
-use parser::part::test;
+use parser::part;
 
 use crate::rendering::render_instanced_cubes;
 
@@ -80,7 +80,7 @@ impl CustomEventLoopProxy {
 
     #[wasm_bindgen]
     pub async fn parse_part(&self, id: String) {
-        test(&id).await;
+        part::parse_part(&id).await;
     }
 }
 

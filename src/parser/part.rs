@@ -96,23 +96,26 @@ impl FromStr for LDrawType {
     }
 }
 
-pub async fn test(id: &str) -> Result<(), JsValue> {
-    let lines = get_subfile(&format!("{}.dat", id)).await?;
+pub async fn parse_part(id: &str) -> Result<(), JsValue> {
+    let lines = parse_file(&format!("{}.dat", id)).await?;
+
+    for line in &lines {
+        log::info!("{:?}", line);
+    }
+
+    Ok(())
+}
+
+async fn parse_file(file_name: &str) -> Result<Vec<Option<LDrawCommand>>, JsValue> {
+    let lines = get_subfile(file_name).await?;
     let parsed_lines: Vec<Option<LDrawCommand>> = lines
         .iter()
         .enumerate()
-        .filter(|(_, line)| line.trim().len() >= 1)
         .map(|(i, line)| parse_line(line.to_string(), i))
-        .collect();
-
-    let filtered_lines: Vec<&LDrawCommand> = parsed_lines
-        .iter()
         .filter(|p| p.is_some())
-        .map(|p| p.as_ref().unwrap())
         .collect();
 
-    log::info!("lines: {:?}", filtered_lines);
-    Ok(())
+    Ok(parsed_lines)
 }
 
 fn parse_line(line: String, index: usize) -> Option<LDrawCommand> {
