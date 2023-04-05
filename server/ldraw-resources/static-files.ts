@@ -6,7 +6,7 @@ dotenv.config();
 
 export const LDRAWRouter = Router();
 
-LDRAWRouter.use("/zip", BundleRouter)
+LDRAWRouter.use("/bundle", BundleRouter)
 
 LDRAWRouter.use("/data/parts", express.static(`${process.env.LDRAW_LIB}/parts`));
 LDRAWRouter.use("/data/parts", express.static(`${process.env.LDRAW_LIB}/p`));

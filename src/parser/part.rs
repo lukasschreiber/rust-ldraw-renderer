@@ -229,8 +229,7 @@ fn parse_author(tokens: Vec<&str>) -> LDrawCommand {
         tokens.join(" ")
     } else {
         tokens.split_last().unwrap().1.join(" ")
-    }
-    .to_string();
+    };
     LDrawCommand::Author(real_name, user_name)
 }
 
