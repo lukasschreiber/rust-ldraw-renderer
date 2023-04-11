@@ -9,9 +9,9 @@ use three_d::{Window, WindowError, WindowSettings};
 use wasm_bindgen::prelude::*;
 use winit::event_loop::{EventLoopProxy, EventLoopWindowTarget};
 
-use parser::part;
+use parser::part::{self, LDrawBrick};
 
-use crate::rendering::render_instanced_cubes;
+use crate::rendering::render_brick;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -54,8 +54,10 @@ impl CustomEventLoopProxy {
     }
 
     #[wasm_bindgen]
-    pub fn create_window(&mut self, canvas_id: &str) -> usize {
-        let value = create_window(canvas_id);
+    pub async fn create_window(&mut self, canvas_id: &str, brick_id: &str) -> usize {
+        let brick_result = part::parse_part(brick_id).await;
+        let brick = brick_result.ok().unwrap(); // TODO: handle errors form parser !!!
+        let value = create_window(canvas_id, brick);
         let id = self.1;
         self.0
             .send_event(RenderingUserEvent::InternalCreateWindow(id, value))
@@ -76,11 +78,6 @@ impl CustomEventLoopProxy {
         self.0
             .send_event(RenderingUserEvent::InternalUpdateProps(value))
             .unwrap_or_else(|_| panic!("Something went horribly wrong!"));
-    }
-
-    #[wasm_bindgen]
-    pub async fn parse_part(&self, id: String) {
-        part::parse_part(&id).await;
     }
 }
 
@@ -107,6 +104,7 @@ impl RenderingParams {
 
 pub fn create_window(
     canvas_id: &str,
+    brick: LDrawBrick,
 ) -> Box<
     dyn FnOnce(
         &EventLoopWindowTarget<RenderingUserEvent<()>>,
@@ -150,7 +148,7 @@ pub fn create_window(
             )
             .unwrap();
 
-            render_instanced_cubes(window)
+            render_brick(window, brick)
         },
     );
     callback

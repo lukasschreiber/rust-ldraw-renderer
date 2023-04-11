@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::parser::tokenizer::*;
 use three_d::{Matrix3, Vector3};
 use wasm_bindgen::prelude::*;
@@ -55,10 +57,15 @@ pub struct LDrawFile {
     subfiles: Vec<LDrawSubfile>,
 }
 
-pub async fn parse_part(id: &str) -> Result<(), JsValue> {
-    let files = get_bundle_lst(&format!("{}", id)).await?;
+#[derive(Debug, Clone)]
+pub struct LDrawBrick {
+    entry: String,
+    files: HashMap<String, LDrawFile>,
+}
 
-    log::info!("{:?}", files);
+pub async fn parse_part(id: &str) -> Result<LDrawBrick, JsValue> {
+    let files = get_bundle_lst(&format!("{}", id)).await?;
+    let mut file_map = HashMap::new();
 
     for file in files {
         let lines = get_subfile(&file).await?;
@@ -143,10 +150,13 @@ pub async fn parse_part(id: &str) -> Result<(), JsValue> {
             }
         }
 
-        log::info!("{:?}", file);
+        file_map.insert(file.name.to_string(), file.clone());
     }
 
-    Ok(())
+    Ok(LDrawBrick {
+        entry: format!("{}.dat", id),
+        files: file_map,
+    })
 }
 
 async fn get_bundle_lst(id: &str) -> Result<Vec<String>, JsValue> {
