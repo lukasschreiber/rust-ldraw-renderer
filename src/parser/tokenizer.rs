@@ -1,17 +1,18 @@
 use chrono::NaiveDate;
 use std::str::FromStr;
-use three_d::{vec3, Matrix3, Vector3};
+use three_d::{vec3, Matrix3, SquareMatrix, Vector3};
 use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct Color {
-    value: u32,
+    pub value: u32,
 }
 
 // make traits and extend traits
 #[derive(Debug, Clone)]
 pub enum LDrawCommand {
     Comment,
+    BFCInvertNext,
     Title(String),
     Name(String),
     Author(String, Option<String>),
@@ -21,7 +22,7 @@ pub enum LDrawCommand {
     Keywords(Vec<String>),
     History(NaiveDate, Option<String>, String),
     BFCCertification(Option<BFCDirection>),
-    SubfileReference(Color, Vector3<f32>, Matrix3<f32>, String),
+    SubfileReference(Color, Vector3<f32>, Matrix3<f32>, String, bool),
     Contour(Color, Vector3<f32>, Vector3<f32>),
     Triangle(Color, Vector3<f32>, Vector3<f32>, Vector3<f32>),
     Quadrilateral(
@@ -95,29 +96,39 @@ impl FromStr for LDrawType {
 }
 
 pub async fn tokenize_file(lines: Vec<String>) -> Result<Vec<Option<LDrawCommand>>, JsValue> {
-    let parsed_lines: Vec<Option<LDrawCommand>> = lines
-        .iter()
-        .enumerate()
-        .map(|(i, line)| tokenize_line(line.to_string(), i))
-        .filter(|p| p.is_some())
-        .collect();
+    let mut parsed_lines: Vec<Option<LDrawCommand>> = Vec::new();
+    let mut last_line: Option<LDrawCommand> = None;
+
+    for (i, line) in lines.iter().enumerate() {
+        let parsed_line = tokenize_line(line.to_string(), i, last_line);
+        last_line = parsed_line.clone();
+        if parsed_line.is_some() {
+            parsed_lines.push(parsed_line)
+        }
+    }
 
     Ok(parsed_lines)
 }
 
-fn tokenize_line(line: String, index: usize) -> Option<LDrawCommand> {
+fn tokenize_line(
+    line: String,
+    index: usize,
+    lastline: Option<LDrawCommand>,
+) -> Option<LDrawCommand> {
     if line.trim().len() <= 1 {
         return None;
     }
+
+    let invert_next_line = matches!(lastline, Some(LDrawCommand::BFCInvertNext));
 
     let tokens: Vec<&str> = line.split_whitespace().collect();
     let tail = tokens.split_first().unwrap().1;
     match tokens[0] {
         "0" => Some(tokenize_meta(tail.to_vec(), index)),
-        "1" => Some(tokenize_subfile_reference(tail.to_vec())),
+        "1" => Some(tokenize_subfile_reference(tail.to_vec(), invert_next_line)),
         "2" => Some(tokenize_contour(tail.to_vec())),
-        "3" => Some(tokenize_triangle(tail.to_vec())),
-        "4" => Some(tokenize_quadrilateral(tail.to_vec())),
+        "3" => Some(tokenize_triangle(tail.to_vec(), invert_next_line)),
+        "4" => Some(tokenize_quadrilateral(tail.to_vec(), invert_next_line)),
         "5" => Some(tokenize_optional_contour(tail.to_vec())),
         _ => None,
     }
@@ -133,23 +144,33 @@ fn tokenize_optional_contour(tokens: Vec<&str>) -> LDrawCommand {
     LDrawCommand::OptionalContour(color, x, y, z, w)
 }
 
-fn tokenize_quadrilateral(tokens: Vec<&str>) -> LDrawCommand {
+fn tokenize_quadrilateral(tokens: Vec<&str>, invert_next_line: bool) -> LDrawCommand {
+    // invert if previous line says so
     let color = tokenize_color(tokens[0]);
     let x = tokenize_vec3(tokens[1..4].to_vec());
     let y = tokenize_vec3(tokens[4..7].to_vec());
     let z = tokenize_vec3(tokens[7..10].to_vec());
     let w = tokenize_vec3(tokens[10..13].to_vec());
 
-    LDrawCommand::Quadrilateral(color, x, y, z, w)
+    if invert_next_line {
+        LDrawCommand::Quadrilateral(color, x, y, z, w)
+    } else {
+        LDrawCommand::Quadrilateral(color, x, w, z, y)
+    }
 }
 
-fn tokenize_triangle(tokens: Vec<&str>) -> LDrawCommand {
+fn tokenize_triangle(tokens: Vec<&str>, invert_next_line: bool) -> LDrawCommand {
+    // invert if previous line says so
     let color = tokenize_color(tokens[0]);
     let x = tokenize_vec3(tokens[1..4].to_vec());
     let y = tokenize_vec3(tokens[4..7].to_vec());
     let z = tokenize_vec3(tokens[7..10].to_vec());
 
-    LDrawCommand::Triangle(color, x, y, z)
+    if invert_next_line {
+        LDrawCommand::Triangle(color, x, z, y)
+    } else {
+        LDrawCommand::Triangle(color, x, y, z)
+    }
 }
 
 fn tokenize_contour(tokens: Vec<&str>) -> LDrawCommand {
@@ -160,14 +181,22 @@ fn tokenize_contour(tokens: Vec<&str>) -> LDrawCommand {
     LDrawCommand::Contour(color, x, y)
 }
 
-fn tokenize_subfile_reference(tokens: Vec<&str>) -> LDrawCommand {
+fn tokenize_subfile_reference(tokens: Vec<&str>, invert_next_line: bool) -> LDrawCommand {
+    // invert if previous line says so or if matrix determinant is negative
+
     let color = tokenize_color(tokens[0]);
     let file = sanitize_file_name(tokens[13]);
 
     let translation = tokenize_vec3(tokens[1..4].to_vec());
     let transformation = tokenize_mat3(tokens[4..13].to_vec());
 
-    LDrawCommand::SubfileReference(color, translation, transformation, file)
+    LDrawCommand::SubfileReference(
+        color,
+        translation,
+        transformation,
+        file,
+        invert_next_line ^ (transformation.determinant() < 0.0),
+    )
 }
 
 fn tokenize_vec3(tokens: Vec<&str>) -> Vector3<f32> {
@@ -232,6 +261,7 @@ fn tokenize_bfc_certification(tokens: Vec<&str>) -> LDrawCommand {
     match tokens[0] {
         "CERTIFY" => LDrawCommand::BFCCertification(BFCDirection::from_str(tokens[1]).ok()),
         "NOCERTIFY" => LDrawCommand::BFCCertification(None),
+        "INVERTNEXT" => LDrawCommand::BFCInvertNext,
         _ => LDrawCommand::Comment,
     }
 }

@@ -1,10 +1,76 @@
+use std::ops::Mul;
+
 use three_d::{
     degrees, vec3, AmbientLight, Camera, ClearState, Color, CpuMaterial, CpuMesh, Cull,
-    DirectionalLight, Event, FrameOutput, Gm, Mesh, OrbitControl, PhysicalMaterial, Vec3, Viewport,
-    Window,
+    DirectionalLight, Event, FrameOutput, Gm, Matrix, Matrix3, Matrix4, Mesh, OrbitControl,
+    PhysicalMaterial, Vector3, Viewport, Window,
 };
 
-use crate::{events::RenderingUserEvent, parser::part::LDrawBrick};
+use crate::{
+    events::RenderingUserEvent,
+    parser::part::LDrawFile,
+    parser::{part::LDrawBrick, tokenizer::BFCDirection},
+};
+
+fn get_vertices(
+    file: &LDrawFile,
+    brick: &LDrawBrick,
+    matrix: Matrix4<f32>,
+    winding: &BFCDirection,
+) -> Vec<Vector3<f32>> {
+    let mut vertices = Vec::new();
+    for triangle in file.triangles.iter() {
+        if matches!(winding, &BFCDirection::CCW) {
+            vertices.push(matrix.mul(triangle.x.extend(1.0)).truncate());
+            vertices.push(matrix.mul(triangle.y.extend(1.0)).truncate());
+            vertices.push(matrix.mul(triangle.z.extend(1.0)).truncate());
+        } else {
+            vertices.push(matrix.mul(triangle.x.extend(1.0)).truncate());
+            vertices.push(matrix.mul(triangle.z.extend(1.0)).truncate());
+            vertices.push(matrix.mul(triangle.y.extend(1.0)).truncate());
+        }
+    }
+
+    for subfile in file.subfiles.iter() {
+        let new_matrix = matrix
+            .mul(Matrix4::from_translation(subfile.translation))
+            .mul(Matrix4::from(subfile.transformation).transpose());
+
+        let mut subfile_vertices = get_vertices(
+            brick.files.get(&subfile.filename).unwrap(),
+            brick,
+            new_matrix,
+            &subfile.bfc_direction,
+        );
+        vertices.append(&mut subfile_vertices)
+    }
+
+    vertices
+}
+
+fn generate_brick_mesh(brick: LDrawBrick) -> CpuMesh {
+    let entry_file = brick.files.get(&brick.entry_file).unwrap();
+    let vertices: Vec<Vector3<f32>> = get_vertices(
+        entry_file,
+        &brick,
+        Matrix4::new(
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ),
+        &entry_file.bfc_direction,
+    )
+    .iter()
+    .map(|vertex| Matrix3::new(1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, -1.0).mul(vertex))
+    .collect();
+
+    CpuMesh {
+        positions: three_d::Positions::F32(vertices),
+        indices: three_d::Indices::None,
+        normals: None,
+        tangents: None,
+        uvs: None,
+        colors: None,
+    }
+}
 
 // should take some kind of properties as struct
 pub fn render_brick(
@@ -30,24 +96,16 @@ pub fn render_brick(
     );
     let mut control = OrbitControl::new(vec3(0.0, 0.0, 0.0), 1.0, 1000.0);
 
-    let light0 = DirectionalLight::new(&context, 0.5, Color::WHITE, &vec3(0.0, -0.5, -0.5));
+    let mut light0 = DirectionalLight::new(&context, 0.5, Color::WHITE, &vec3(0.0, -0.5, -0.5));
     let light1 = DirectionalLight::new(&context, 0.5, Color::WHITE, &vec3(0.0, 0.5, 0.5));
     let amb_light = AmbientLight::new(&context, 0.5, Color::WHITE);
 
-    let mut positions = Vec::new();
-    positions.push(Vec3::new(0.0, 0.0, 0.0));
-    positions.push(Vec3::new(0.0, 1.0, 0.0));
-    positions.push(Vec3::new(2.0, 0.0, 0.0));
-    positions.push(Vec3::new(2.0, 0.0, 2.0));
+    // positions array contains all UNIQUE vectors
+    // triangles use indices
 
-    let mut brick_tri_mesh = CpuMesh {
-        positions: three_d::Positions::F32(positions),
-        indices: three_d::Indices::U8(Vec::from([0, 1, 2, 3, 2, 1])),
-        normals: None,
-        tangents: None,
-        uvs: None,
-        colors: None,
-    };
+    // mesh builder function that builds the mesh recursively - for a beginning ignore duplicate portions and ignore colors
+
+    let mut brick_tri_mesh = generate_brick_mesh(brick);
 
     brick_tri_mesh.compute_normals();
 
@@ -67,7 +125,9 @@ pub fn render_brick(
         ),
     );
 
-    brick_mesh.material.render_states.cull = Cull::Back;
+    light0.generate_shadow_map(1024, brick_mesh.into_iter());
+
+    // brick_mesh.material.render_states.cull = Cull::Back;
 
     let mut red: u8 = 0;
 

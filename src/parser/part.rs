@@ -8,59 +8,59 @@ use web_sys::{Request, RequestInit, RequestMode, Response};
 
 #[derive(Debug, Clone)]
 pub struct LDrawAuthor {
-    name: String,
-    username: Option<String>,
+    pub name: String,
+    pub username: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LDrawContour {
-    color: Color,
-    x: Vector3<f32>,
-    y: Vector3<f32>,
+    pub color: Color,
+    pub x: Vector3<f32>,
+    pub y: Vector3<f32>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LDrawOptionalContour {
-    color: Color,
-    x: Vector3<f32>,
-    y: Vector3<f32>,
-    ox: Vector3<f32>,
-    oy: Vector3<f32>,
+    pub color: Color,
+    pub x: Vector3<f32>,
+    pub y: Vector3<f32>,
+    pub ox: Vector3<f32>,
+    pub oy: Vector3<f32>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LDrawTriangle {
-    color: Color,
-    x: Vector3<f32>,
-    y: Vector3<f32>,
-    z: Vector3<f32>,
+    pub color: Color,
+    pub x: Vector3<f32>,
+    pub y: Vector3<f32>,
+    pub z: Vector3<f32>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LDrawSubfile {
-    color: Color,
-    bfc_direction: BFCDirection,
-    transformation: Matrix3<f32>,
-    translation: Vector3<f32>,
-    filename: String,
+    pub color: Color,
+    pub bfc_direction: BFCDirection,
+    pub transformation: Matrix3<f32>,
+    pub translation: Vector3<f32>,
+    pub filename: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct LDrawFile {
-    name: String,
-    title: String,
-    author: LDrawAuthor,
-    bfc_direction: BFCDirection,
-    lines: Vec<LDrawContour>,
-    optional_lines: Vec<LDrawOptionalContour>,
-    triangles: Vec<LDrawTriangle>,
-    subfiles: Vec<LDrawSubfile>,
+    pub name: String,
+    pub title: String,
+    pub author: LDrawAuthor,
+    pub bfc_direction: BFCDirection,
+    pub lines: Vec<LDrawContour>,
+    pub optional_lines: Vec<LDrawOptionalContour>,
+    pub triangles: Vec<LDrawTriangle>,
+    pub subfiles: Vec<LDrawSubfile>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LDrawBrick {
-    entry: String,
-    files: HashMap<String, LDrawFile>,
+    pub entry_file: String,
+    pub files: HashMap<String, LDrawFile>,
 }
 
 pub async fn parse_part(id: &str) -> Result<LDrawBrick, JsValue> {
@@ -139,13 +139,25 @@ pub async fn parse_part(id: &str) -> Result<LDrawBrick, JsValue> {
                     translation,
                     transformation,
                     filename,
-                )) => file.subfiles.push(LDrawSubfile {
-                    color: color.clone(),
-                    bfc_direction: file.bfc_direction.clone(),
-                    translation: translation.clone(),
-                    transformation: transformation.clone(),
-                    filename: filename.to_string(),
-                }),
+                    invert_winding,
+                )) => {
+                    let bfc_direction = file.bfc_direction.clone();
+                    file.subfiles.push(LDrawSubfile {
+                        color: color.clone(),
+                        bfc_direction: if invert_winding.clone()
+                            && bfc_direction == BFCDirection::CW
+                        {
+                            BFCDirection::CCW
+                        } else if invert_winding.clone() && bfc_direction == BFCDirection::CCW {
+                            BFCDirection::CCW
+                        } else {
+                            bfc_direction
+                        },
+                        translation: translation.clone(),
+                        transformation: transformation.clone(),
+                        filename: filename.to_string(),
+                    })
+                }
                 _ => {}
             }
         }
@@ -154,7 +166,7 @@ pub async fn parse_part(id: &str) -> Result<LDrawBrick, JsValue> {
     }
 
     Ok(LDrawBrick {
-        entry: format!("{}.dat", id),
+        entry_file: format!("{}.dat", id),
         files: file_map,
     })
 }
